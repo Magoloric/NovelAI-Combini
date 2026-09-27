@@ -1,8 +1,19 @@
-# NovelAI Prompt Preset / Wildcards Manager
+# NovelAI Prompt Preset / Wildcards Manager / Sequencer 
 
+## A word from the fork author:
+
+I initially created this fork to include additional functionality not present in the original project, most notably, the tag sequencing. I also added a few QoL improvements. 
+
+As this is a purely "for myself" type of project, I'm supplying it as is without any maintenance obligations, so you're using it at your own risk! 
+
+**AI Disclosure:** All the edits been made using Claude Code and reviewed by me.
+
+To install this script, you need Tampermonkey or similar extension that can run userscripts. Copy the script file contents in the dist folder into new tampermonkey script and save. I might eventually setup an easier way forthwith.
+
+Most of the text and demos below are made by NeviumX, author of the original code.
+
+## About
 A userscript for novelai.net/image that allows you to manage and use prompt presets. It can also format multi-line presets into a special pipe-separated string, useful for certain prompting techniques or organizational purposes. Streamline your workflow by replacing simple `__tokens__` with extensive prompts, character designs, or these specially formatted strings.  
-
-[![Install with GreasyFork](https://img.shields.io/badge/Install%20with-GreasyFork-green.svg)](https://update.greasyfork.org/scripts/537842/NovelAI%20Prompt%20Preset%20%20Wildcards%20Manager.user.js)
 
 ## Demo
 ### Easy Preset Management
@@ -102,7 +113,4 @@ Details:
 ## Credits
 
 -   **JSZip**: This script relies on a specific version of JSZip to handle image metadata correctly. Thank you to the maintainer of the **[JSZip fork on GreasyFork](https://greasyfork.org/en/scripts/473358-jszip)** for providing a working solution where the official library had issues.
-
-### Support me!
-
-<a href='https://ko-fi.com/D1D3OZLPE' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi3.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+-   **NeviumX**: The author behind original script. You can support them <a href='https://ko-fi.com/D1D3OZLPE' target='_blank'>here</a>
