@@ -5,11 +5,15 @@ import { messageTranslations, uiMessageTranslations } from './translations';
 import { debugLog } from './debugLog';
 import { renderStyledText } from './renderStyledText';
 
+type ItemKind = 'preset' | 'sequence';
+
 /*
     * イベント
     * naiRemainUpdate → トークンをメタデータに残すかどうかのトグル
     * naiPresetUpdate → プリセット辞書を更新する
     * naiDebugUpdate  → デバッグモードのトグル
+    * naiSequenceUpdate  → シーケンス辞書・位置を更新する (Userscript → Page)
+    * naiSequenceAdvance → 生成後にシーケンス位置が進んだ (Page → Userscript)
     *
 */
 
@@ -18,11 +22,13 @@ export class UIManager {
     panel: HTMLDivElement | null;
     jsonMgr: JsonManager;
     _onDocClick?: (e: MouseEvent) => void;
+    _offSeqChange?: () => void;
 
     constructor(root: Element) {
         this.langCode = this.getLangCode();
-        this.panel   = this.injectUI(root);
         this.jsonMgr = jsonManagerSingleton;
+        this.panel   = this.injectUI(root);
+        this._offSeqChange = this.jsonMgr.onSequenceChange(() => this.updateSequenceBadges());
     }
     getLangCode(): keyof typeof messageTranslations {
         if (window.__userLang){
@@ -52,6 +58,8 @@ export class UIManager {
             document.removeEventListener('click', this._onDocClick, false);
             this._onDocClick = undefined;
         }
+        this._offSeqChange?.();
+        this._offSeqChange = undefined;
         if (this.panel.isConnected) this.panel.remove();
         this.panel = null;
     }
@@ -63,7 +71,9 @@ export class UIManager {
 
         /* title */
         panel.innerHTML = `
-            <div class="nai-preset-title">Prompt Preset / Wildcards Manager</div>
+            <div class="nai-preset-title" role="button" tabindex="0" aria-expanded="true">
+                <span class="nai-fold-chevron">▾</span>Prompt Preset / Wildcards Manager
+            </div>
             <div class="nai-gear-wrap">
                 <button class="nai-gear-btn" title="Settings">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -97,6 +107,7 @@ export class UIManager {
                 <input type="file" accept=".json,.txt" class="nai-file-input" style="display:none">
             </div>
 
+            <div class="nai-preset-body">
             <div class="nai-textarea-wrapper">
                 <textarea class="nai-preset-textarea" placeholder="masterpiece, best quality, oil painting (medium)" spellcheck="false"></textarea>
                 <div class="nai-textarea-overlay"></div>
@@ -106,9 +117,19 @@ export class UIManager {
 
             <div class="nai-preset-controls">
                 <input  class="nai-preset-input" placeholder="Preset name">
+                <label class="nai-seq-toggle nai-has-tooltip">
+                    <input type="checkbox" class="nai-seq-check">
+                    <span>SEQ</span>
+                    <div class="nai-tooltip"><div class="nai-tooltip-content" data-tooltip-key="tooltipSequence"></div><div class="nai-tooltip-arrow"></div></div>
+                </label>
                 <button class="nai-btn nai-btn-add">ADD</button>
                 <button class="nai-btn nai-btn-clear">CLEAR</button>
                 <button class="nai-btn nai-btn-toggle">▴</button>
+            </div>
+
+            <div class="nai-seq-picker">
+                <span>Next entry</span>
+                <select class="nai-seq-picker-select"></select>
             </div>
 
             <div class="nai-preset-list"></div>
@@ -126,6 +147,7 @@ export class UIManager {
                 </button>
                 <button class="nai-btn nai-btn-list-toggle">▴</button>
             </div>
+            </div>
         `;
 
         /* populate tooltip content with styled text */
@@ -139,6 +161,46 @@ export class UIManager {
         const overlay = panel.querySelector('.nai-textarea-overlay') as HTMLDivElement;
         const presetInput = panel.querySelector('.nai-preset-input') as HTMLInputElement;
         const errorMsgDiv = panel.querySelector('.nai-preset-errormsg') as HTMLDivElement;
+        const seqCheck = panel.querySelector('.nai-seq-check') as HTMLInputElement;
+        const addBtn = panel.querySelector('.nai-btn-add') as HTMLButtonElement;
+
+        /* fold / unfold the whole panel (state shared by all panels, kept across reloads) */
+        const title = panel.querySelector('.nai-preset-title') as HTMLDivElement;
+        const body = panel.querySelector('.nai-preset-body') as HTMLDivElement;
+        const setCollapsed = (collapsed: boolean) => {
+            body.style.display = collapsed ? 'none' : '';
+            panel.classList.toggle('nai-collapsed', collapsed);
+            title.setAttribute('aria-expanded', String(!collapsed));
+            (title.querySelector('.nai-fold-chevron') as HTMLSpanElement).textContent = collapsed ? '▸' : '▾';
+        };
+        const toggleCollapsed = () => {
+            const collapsed = body.style.display !== 'none';
+            GM_setValue(CONST.PANEL_COLLAPSED_KEY, collapsed);
+            setCollapsed(collapsed);
+        };
+        setCollapsed(GM_getValue(CONST.PANEL_COLLAPSED_KEY, false));
+        title.addEventListener('click', toggleCollapsed);
+        title.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapsed(); }
+        });
+
+        /* ADD turns into UPDATE when the name matches an existing preset/sequence of the current kind */
+        const syncAddLabel = () => {
+            const name = presetInput.value.trim();
+            const prefix = seqCheck.checked ? CONST.SEQ_PREFIX : CONST.PREFIX;
+            const exists = !!name && GM_getValue(prefix + name, null) !== null;
+            addBtn.textContent = exists ? 'UPDATE' : 'ADD';
+            addBtn.classList.toggle('nai-btn-update', exists);
+        };
+        presetInput.addEventListener('input', syncAddLabel);
+        seqCheck.addEventListener('change', syncAddLabel);
+
+        const presetPlaceholder = textarea.placeholder;
+        const sequencePlaceholder = 'red hair\nblue hair\nblonde hair';
+        const syncSeqMode = () => {
+            textarea.placeholder = seqCheck.checked ? sequencePlaceholder : presetPlaceholder;
+        };
+        seqCheck.addEventListener('change', syncSeqMode);
 
         const updateOverlay = () => {
             const text = textarea.value;
@@ -180,13 +242,7 @@ export class UIManager {
 
         /* preset data list */
         const list = panel.querySelector('.nai-preset-list') as HTMLDivElement;
-        GM_listValues()
-            .filter(k => k.startsWith(CONST.PREFIX))
-            .forEach(k => {
-                const presetName = k.slice(CONST.PREFIX.length);
-                list.appendChild(this.makeListItem(presetName));
-            }
-        );
+        this.populateList(list);
 
         /* helper to auto scroll */
         const scrollItemIntoView = (item: HTMLElement) => {
@@ -224,8 +280,14 @@ export class UIManager {
             }
         });
 
+        /* uncheck every list item and hide their buttons */
+        const deselectAll = () => {
+            document.querySelectorAll<HTMLInputElement>('.nai-preset-item input[type="checkbox"]').forEach(el => el.checked = false);
+            document.querySelectorAll<HTMLButtonElement>('.nai-btn-remove').forEach(el => el.style.display = 'none');
+            this.updatePositionPicker();
+        };
+
         /* ADD button */
-        const addBtn = panel.querySelector('.nai-btn-add') as HTMLButtonElement;
         addBtn.onclick = () => {
             const btnFlashErr = () => {
                 addBtn.style.animation = 'Flash-Err 0.4s';
@@ -244,12 +306,14 @@ export class UIManager {
             }
             if (validatePresetName(name) !== null) { btnFlashErr(); return; }
 
-            const key = CONST.PREFIX + name;
+            const kind: ItemKind = seqCheck.checked ? 'sequence' : 'preset';
+            const key = (kind === 'sequence' ? CONST.SEQ_PREFIX : CONST.PREFIX) + name;
             const alreadyExists = GM_getValue(key, null) !== null;
             GM_setValue(key, presetText);
+            const messages = uiMessageTranslations[this.langCode];
             if(alreadyExists) {
                 const item = [...list.children]
-                    .find(el => (el.querySelector('span') as HTMLSpanElement)?.textContent === name);
+                    .find(el => (el as HTMLElement).dataset.name === name && (el as HTMLElement).dataset.kind === kind);
                 if(item) {
                     addBtn.style.animation = 'Flash 0.4s';
                     setTimeout(() => addBtn.style.animation = '', 400);
@@ -257,29 +321,40 @@ export class UIManager {
                     (item as HTMLElement).style.animation = 'Flash 0.4s';
                     setTimeout(() => (item as HTMLElement).style.animation = '', 400);
                 }
-                this.showNotification(uiMessageTranslations[this.langCode].popupPresetUpdated + name);
+                this.showNotification((kind === 'sequence' ? messages.popupSequenceUpdated : messages.popupPresetUpdated) + name);
             } else {
-                const newItem = this.makeListItem(name);
+                const newItem = this.makeListItem(name, kind);
                 list.appendChild(newItem);
                 addBtn.style.animation = 'Flash 0.4s';
                 setTimeout(() => addBtn.style.animation = '', 400);
                 (newItem as HTMLElement).style.animation = 'Flash 0.4s';
                 scrollItemIntoView(newItem as HTMLElement);
                 setTimeout(() => (newItem as HTMLElement).style.animation = '', 400);
-                this.showNotification(uiMessageTranslations[this.langCode].popupPresetAdded + name);
+                this.showNotification((kind === 'sequence' ? messages.popupSequenceAdded : messages.popupPresetAdded) + name);
             }
-            this.jsonMgr.updateDict();
+            if (kind === 'sequence') this.jsonMgr.updateSequences();
+            else this.jsonMgr.updateDict();
+            // editing/adding is done: reset the form so the next ADD starts fresh
             presetInput.value = '';
+            textarea.value = '';
+            autoResizeTextarea(textarea);
+            updateOverlay();
+            deselectAll();
+            syncAddLabel();
         };
 
         /* CLEAR button (clears textarea and preset name) */
         (panel.querySelector('.nai-btn-clear') as HTMLButtonElement).onclick = () => {
             textarea.value = '';
             presetInput.value = '';
+            seqCheck.checked = false;
+            syncSeqMode();
             autoResizeTextarea(textarea);
             updateOverlay();
             errorMsgDiv.textContent = '';
             errorMsgDiv.style.display = 'none';
+            deselectAll();
+            syncAddLabel();
         };
 
         /* toggle textarea visibility */
@@ -298,12 +373,15 @@ export class UIManager {
                 const btn  = item.querySelector('.nai-btn-remove') as HTMLButtonElement;
                 btn.style.display = target.checked ? 'inline' : 'none';
                 if(target.checked) {
-                    const name = (item.querySelector('span') as HTMLSpanElement).textContent as string;
-                    const presetText = GM_getValue(CONST.PREFIX + name, '');
+                    const name = item.dataset.name as string;
+                    const isSequence = item.dataset.kind === 'sequence';
+                    const presetText = GM_getValue((isSequence ? CONST.SEQ_PREFIX : CONST.PREFIX) + name, '');
                     textarea.value = presetText;
                     autoResizeTextarea(textarea);
                     updateOverlay();
                     presetInput.value = name;
+                    seqCheck.checked = isSequence;
+                    syncSeqMode();
                     const allCheckboxes = document.querySelectorAll('.nai-preset-item input[type="checkbox"]');
                     const allBtns = document.querySelectorAll('.nai-btn-remove');
                     allCheckboxes.forEach((el) => {
@@ -316,8 +394,17 @@ export class UIManager {
                             (el as HTMLButtonElement).style.display = 'none';
                         }
                     });
+                    syncAddLabel();
                 }
+                this.updatePositionPicker();
             }
+        });
+
+        /* position picker: choose which entry the next generation uses */
+        const picker = panel.querySelector('.nai-seq-picker-select') as HTMLSelectElement;
+        picker.addEventListener('change', () => {
+            const name = picker.dataset.name;
+            if (name) this.jsonMgr.setSequencePosition(name, Number(picker.value));
         });
 
         /* remove handler */
@@ -327,11 +414,19 @@ export class UIManager {
             e.stopPropagation();
             e.preventDefault();
             const item = target.closest('.nai-preset-item') as HTMLLabelElement;
-            const name = (item.querySelector('span') as HTMLSpanElement).textContent as string;
+            const name = item.dataset.name as string;
             if (!confirm(messageTranslations[this.langCode].confirmDeletePreset + name)) return;
-            GM_deleteValue(CONST.PREFIX + name);
-            item.remove();
-            this.jsonMgr.updateDict();
+            if (item.dataset.kind === 'sequence') {
+                GM_deleteValue(CONST.SEQ_PREFIX + name);
+                item.remove();
+                this.jsonMgr.updateSequences();
+            } else {
+                GM_deleteValue(CONST.PREFIX + name);
+                item.remove();
+                this.jsonMgr.updateDict();
+            }
+            this.updatePositionPicker();
+            syncAddLabel();
         });
 
         /* preset search handler */
@@ -343,7 +438,7 @@ export class UIManager {
             const searchTerm = searchBox.value.toLowerCase().trim();
             const presetItems = list.querySelectorAll('.nai-preset-item');
             presetItems.forEach(item => {
-                const presetName = (item.querySelector('span') as HTMLSpanElement).textContent!.toLowerCase();
+                const presetName = ((item as HTMLElement).dataset.name ?? '').toLowerCase();
                 if (presetName.includes(searchTerm)) {
                     (item as HTMLElement).style.display = 'inline-flex';
                 } else {
@@ -394,6 +489,7 @@ export class UIManager {
             if (!fileInput.files || !fileInput.files[0]) return;
             const reader = new FileReader();
             let importCount = 0;
+            let importedSequences = false;
             reader.onload = () => {
                 try {
                     importCount = 0;
@@ -407,6 +503,19 @@ export class UIManager {
                             importCount++;
                         }
                     });
+                    const sequences = obj[CONST.SEQ_EXPORT_KEY];
+                    if (sequences && typeof sequences === 'object') {
+                        Object.entries(sequences).forEach(([name, content]) => {
+                            if (typeof content !== 'string') return;
+                            const key = CONST.SEQ_PREFIX + name;
+                            if (GM_getValue(key, null) === null) {
+                                GM_setValue(key, content);
+                                list.appendChild(this.makeListItem(name, 'sequence'));
+                                importCount++;
+                                importedSequences = true;
+                            }
+                        });
+                    }
                 } catch(err: any) {
                     alert(messageTranslations[this.langCode].importFailure + err.message);
                     return;
@@ -415,6 +524,7 @@ export class UIManager {
                     debugLog(`[NovelAI Prompt Preset Manager]\nImported ${importCount} new preset(s)!`);
                     alert(messageTranslations[this.langCode].importSuccess.replace('${importCount}', importCount.toString()));
                     this.jsonMgr.updateDict();
+                    if (importedSequences) this.jsonMgr.updateSequences();
                 }
                 fileInput.value = '';
             };
@@ -422,13 +532,15 @@ export class UIManager {
         });
 
         exportBtn.addEventListener('click', () => {
-            const data: Record<string, string> = {};
+            const data: Record<string, string | Record<string, string>> = {};
             GM_listValues()
                 .filter(k => k.startsWith(CONST.PREFIX))
                 .forEach(k => {
                     const presetName = k.slice(CONST.PREFIX.length);
                     data[presetName] = GM_getValue(k, '');
                 });
+            const sequences = this.jsonMgr.getSequenceDict();
+            if (Object.keys(sequences).length) data[CONST.SEQ_EXPORT_KEY] = { ...sequences };
             const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
@@ -448,11 +560,12 @@ export class UIManager {
         clearBtn.addEventListener('click', () => {
             if (!confirm(messageTranslations[this.langCode].confirmDeleteAllPresets)) return;
             GM_listValues()
-                .filter(k => k.startsWith(CONST.PREFIX))
+                .filter(k => k.startsWith(CONST.PREFIX) || k.startsWith(CONST.SEQ_PREFIX))
                 .forEach(k => GM_deleteValue(k));
             list.innerHTML = '';
             alert(messageTranslations[this.langCode].allPresetsDeleted);
             this.jsonMgr.updateDict();
+            this.jsonMgr.updateSequences();
         });
 
         this._onDocClick = (e: MouseEvent)=>{
@@ -498,15 +611,38 @@ export class UIManager {
     }
 
     /* helper to create a preset list entry */
-    makeListItem(name: string): HTMLLabelElement {
+    makeListItem(name: string, kind: ItemKind = 'preset'): HTMLLabelElement {
         const wrapper = document.createElement('label');
         wrapper.className = 'nai-preset-item';
-        wrapper.innerHTML = `
-            <input type="checkbox">
-            <span>${name}</span>
-            <button class="nai-btn-remove">×</button>
-            `;
+        wrapper.dataset.name = name;
+        wrapper.dataset.kind = kind;
+        if (kind === 'sequence') {
+            wrapper.classList.add('nai-seq-item');
+            wrapper.innerHTML = `
+                <input type="checkbox">
+                <span class="nai-item-name">${name}</span>
+                <span class="nai-seq-pos"></span>
+                <button class="nai-btn-remove">×</button>
+                `;
+            this.updateSequenceBadge(wrapper);
+        } else {
+            wrapper.innerHTML = `
+                <input type="checkbox">
+                <span class="nai-item-name">${name}</span>
+                <button class="nai-btn-remove">×</button>
+                `;
+        }
         return wrapper;
+    }
+
+    /* helper to fill the list with presets followed by sequences */
+    populateList(list: HTMLElement): void {
+        GM_listValues()
+            .filter(k => k.startsWith(CONST.PREFIX))
+            .forEach(k => list.appendChild(this.makeListItem(k.slice(CONST.PREFIX.length))));
+        GM_listValues()
+            .filter(k => k.startsWith(CONST.SEQ_PREFIX))
+            .forEach(k => list.appendChild(this.makeListItem(k.slice(CONST.SEQ_PREFIX.length), 'sequence')));
     }
 
     /* helper to refresh preset list entry */
@@ -515,13 +651,47 @@ export class UIManager {
         const list = this.panel.querySelector('.nai-preset-list') as HTMLDivElement;
         const presetItems = list.querySelectorAll('.nai-preset-item');
         presetItems.forEach(item => (item as HTMLElement).remove());
-        GM_listValues()
-            .filter(k => k.startsWith(CONST.PREFIX))
-            .forEach(k => {
-                const presetName = k.slice(CONST.PREFIX.length);
-                list.appendChild(this.makeListItem(presetName));
-            }
-        );
+        this.populateList(list);
+    }
+
+    /* show "next / total" on a sequence list entry */
+    updateSequenceBadge(item: HTMLElement): void {
+        const badge = item.querySelector('.nai-seq-pos') as HTMLSpanElement | null;
+        if (!badge) return;
+        const name = item.dataset.name as string;
+        const { index, total } = this.jsonMgr.getSequencePosition(name);
+        badge.textContent = total ? `${index + 1}/${total}` : '0/0';
+        badge.title = total ? 'Next: ' + this.jsonMgr.getSequenceEntries(name)[index] : '';
+    }
+    updateSequenceBadges(): void {
+        if (!this.panel) return;
+        this.panel.querySelectorAll<HTMLElement>('.nai-seq-item').forEach(item => this.updateSequenceBadge(item));
+        this.updatePositionPicker();
+    }
+
+    /* show the "Next entry" picker while a sequence is selected in the list */
+    updatePositionPicker(): void {
+        if (!this.panel) return;
+        const row = this.panel.querySelector('.nai-seq-picker') as HTMLDivElement;
+        const select = row.querySelector('select') as HTMLSelectElement;
+        const checked = this.panel.querySelector<HTMLElement>('.nai-seq-item:has(input:checked)');
+        const name = checked?.dataset.name;
+        const entries = name ? this.jsonMgr.getSequenceEntries(name) : [];
+        if (!name || !entries.length) {
+            row.style.display = 'none';
+            delete select.dataset.name;
+            return;
+        }
+        const { index } = this.jsonMgr.getSequencePosition(name);
+        select.dataset.name = name;
+        select.replaceChildren(...entries.map((entry, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = `${i + 1}. ${entry}`;
+            return opt;
+        }));
+        select.value = String(index);
+        row.style.display = 'flex';
     }
 
     /* handler to show popup notification */

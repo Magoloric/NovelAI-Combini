@@ -6,7 +6,7 @@
 // @name:id           NovelAI Prompt Preset / Wildcards Manager
 // @name:pt           NovelAI Prompt Preset / Wildcards Manager
 // @namespace         https://github.com/NeviumX/NovelAI-Prompt-Preset-Manager
-// @version           1.4.7
+// @version           1.5.0
 // @author            Nevium7, Gemini 2.5 Pro
 // @description       Script to replace __TOKEN__ with any prompt you want before making a request to the NovelAI API. Also adds a UI to manage presets and wildcards on the image generation page.
 // @description:ja    NovelAI の API にリクエストを行う前に、__TOKEN__ を任意のプロンプトに置き換えるスクリプト。プリセットやワイルドカードを管理するためのUIも画像生成ページに追加します。
@@ -31,61 +31,76 @@
 (function () {
   'use strict';
 
-  const cssString = `.nai-preset-panel         {background:#0e0f21;border:1px solid rgb(34, 37, 63);padding:5px 15px;font-size:13px;color:#f0f0f0;}\r
-.nai-preset-title         {font-weight:700;margin-bottom:10px;font-size:14px;padding:7px 5px 0px;}\r
-.nai-textarea-wrapper     {position:relative;width:100%;background:#0e0f21;}\r
-.nai-preset-textarea, .nai-textarea-overlay {width:100%;min-height:80px;max-height:300px;padding:6px;border:none;border-radius:4px;font-size:14px;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:break-word;margin:0;background:transparent;}\r
-.nai-preset-textarea      {position:relative;z-index:1;color:transparent;caret-color:#f8f8f8;overflow-y:auto;}\r
-.nai-textarea-overlay     {position:absolute;top:0;left:0;z-index:0;height:100%;pointer-events:none;overflow:hidden;color:#f8f8f8;}\r
-.nai-preset-errormsg      {display: none;color: #dd6666; font-size: 12px;margin: 5px 0 0 2px;padding: 0 5px;}\r
-.newline-char             {display:inline-block;color:#dd6666;background:rgba(221,102,102,0.1);border:1px solid rgba(221,102,102,0.5);border-radius:3px;font-weight:bold;padding:0 3px;line-height:1;font-size:12px;vertical-align:middle;user-select:none;}\r
-.nai-preset-controls      {display:flex;gap:6px;align-items:center;margin:6px 0}\r
-.nai-preset-input         {flex:1 1 0;padding:4px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8}\r
-.nai-btn                  {padding:4px 10px;border:1px solid rgb(34, 37, 63);background: #22253f;color: #f8f8f8;border-radius:4px;cursor:pointer;font-weight:600}\r
-.nai-btn:hover            {background: #323658ff}\r
-.nai-preset-list          {display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;}\r
-.nai-preset-item          {background:#22253f;border:1px solid rgb(34,37,63);padding:2px 6px;border-radius:4px;display:inline-flex;width:fit-content;max-width:100%;white-space:nowrap;gap:4px;align-items:center;cursor:pointer;transition:border-color .3s ease;user-select:none}\r
-.nai-preset-item input    {margin:0; accent-color: #f5f3c2; cursor: pointer;}\r
-.nai-preset-item:hover    {border-color: #f5f3c2;}\r
-.nai-btn-remove           {display:none;border:none;background:none;color:#dd6666;font-size:15px;cursor:pointer;line-height:1}\r
-.nai-btn-toggle           {width:26px;padding:4px 0;font-weight:700}\r
-.nai-gear-wrap            {position:absolute; top:6px; right:6px}\r
-.nai-gear-btn             {width:26px;height:26px;cursor:pointer;border:none;background:none;padding:0;display:flex;align-items:center;justify-content:center;border-radius:2px;color:#f8f8f8}\r
-.nai-gear-btn.active      {color:#e7f3c2;}\r
-.nai-popup                {position:absolute;bottom:100%;right:0;margin-bottom:8px;width:200px;padding:10px;background:#13152c;border:2px solid #262946;border-radius:4px;color:#eee;display:none;z-index:2147483647}\r
-.nai-popup:before         {content:'';position:absolute;bottom:-6px;right:14px;border:6px solid transparent;border-top-color:#262946}\r
-.nai-remain-row           {margin-top:6px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;float:left;user-select:none;}\r
-.nai-remain-row input[type="checkbox"] {margin: 6px; accent-color: #f5f3c2; cursor: pointer;}\r
-.nai-remain-row:hover     {cursor: pointer;}\r
-.nai-has-tooltip          {position: relative;}\r
-.nai-tooltip              {display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:70%;z-index:100;pointer-events:none;}\r
-.nai-has-tooltip:hover .nai-tooltip {display:block;}\r
-.nai-tooltip-content      {width:max-content;max-width:250px;padding:6px 8px;background:#13152c;border:2px solid #262946;border-radius:4px;color:#eee;font-size:12px;white-space:pre-wrap;text-align:left;}\r
-.nai-tooltip-arrow        {width:0;height:0;margin:0 auto;border:6px solid transparent;border-top-color:#262946;}\r
-.nai-info-btn .nai-tooltip {left:auto;right:0;transform:none;}\r
-.nai-info-btn .nai-tooltip-arrow {margin:0 6px 0 auto;}\r
-.nai-text-red-bold        {color:#dd6666;font-weight:700;}\r
-.nai-suggest-box          {position:fixed;z-index:2147483647;background:#191b31;border:2px solid #262946;border-radius:4px;max-height:180px;overflow-y:auto;font-size:13px;color:#eee}\r
-.nai-suggest-item         {padding:4px 8px;cursor:pointer;border:1px solid rgb(34,37,63);border-radius:4px;transition:border-color .3s ease,background-color .3s ease}\r
-.nai-suggest-item.active  {background-color: #323658ff;border-color: #f5f3c2;transition:background-color .3s ease,border-color .3s ease}\r
-.nai-popup-header         {display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;}\r
-.nai-info-btn             {display:inline-flex;align-items:center;justify-content:center;color:#f8f8f8;opacity:0.6;transition:opacity .2s ease;}\r
-.nai-info-btn:hover       {opacity:1;}\r
-.nai-preset-search-wrapper {position: relative;flex: 1 1 0;display: flex;align-items: center;}\r
-.nai-preset-search        {display:flex;gap:6px;align-items:center;margin-top:6px;}\r
-.nai-preset-search-box    {width:100%;padding:4px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8}\r
-.nai-preset-search-button {width:26px;cursor:pointer;padding:4px 0;display:flex;align-items:center;justify-content:center;border-radius:4px;color:#f8f8f8;}\r
-.nai-preset-search-clear  {display: none;position: absolute;right: 4px;top: 0;bottom: 0;margin: auto;height: 20px;width: 20px;border: none;background: transparent;color: #dd6666;font-size: 16px;font-weight: bold;cursor: pointer;line-height: 1;align-items: center;justify-content: center;}\r
-.nai-preset-search-clear:hover {color: #ff8888;}\r
-.nai-btn-list-toggle      {width:26px;padding:4px 0;font-weight:700}\r
-.nai-btn:focus-visible:not([data-mouse-clicked]), .nai-preset-search-button:focus-visible:not([data-mouse-clicked]), .nai-preset-search-clear:focus-visible:not([data-mouse-clicked]), .nai-gear-btn:focus-visible:not([data-mouse-clicked]), .nai-btn-remove:focus-visible:not([data-mouse-clicked]), .nai-preset-panel input[type="checkbox"]:focus-visible:not([data-mouse-clicked]) {outline:2px solid #f5f3c2; outline-offset:1px; border-radius:4px;}\r
-.nai-preset-notification  {position: absolute;background: #191b31;border: 2px solid #262946; color: #f5f3c2;padding: 5px 10px;border-radius: 4px;font-size: 12px;z-index: 1000;animation: nai-fade-in-out 1.5s ease-out forwards;pointer-events: none;}\r
-@keyframes Flash          {0%{background: #f5f3c2} 100%{background: #22253f}}\r
-@keyframes Flash-Err      {0%{background: rgba(221,102,102,0.5)} 100%{background: #22253f}}\r
-@keyframes nai-fade-in-out {0% { opacity: 0; transform: translateY(10px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); }100% { opacity: 0; transform: translateY(-10px); } }`;
+  const cssString = `.nai-preset-panel         {background:#0e0f21;border:1px solid rgb(34, 37, 63);padding:5px 15px;font-size:13px;color:#f0f0f0;}
+.nai-preset-title         {font-weight:700;margin-bottom:10px;font-size:14px;padding:7px 5px 0px;}
+.nai-textarea-wrapper     {position:relative;width:100%;background:#0e0f21;}
+.nai-preset-textarea, .nai-textarea-overlay {width:100%;min-height:80px;max-height:300px;padding:6px;border:none;border-radius:4px;font-size:14px;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:break-word;margin:0;background:transparent;}
+.nai-preset-textarea      {position:relative;z-index:1;color:transparent;caret-color:#f8f8f8;overflow-y:auto;}
+.nai-textarea-overlay     {position:absolute;top:0;left:0;z-index:0;height:100%;pointer-events:none;overflow:hidden;color:#f8f8f8;}
+.nai-preset-errormsg      {display: none;color: #dd6666; font-size: 12px;margin: 5px 0 0 2px;padding: 0 5px;}
+.newline-char             {display:inline-block;color:#dd6666;background:rgba(221,102,102,0.1);border:1px solid rgba(221,102,102,0.5);border-radius:3px;font-weight:bold;padding:0 3px;line-height:1;font-size:12px;vertical-align:middle;user-select:none;}
+.nai-preset-controls      {display:flex;gap:6px;align-items:center;margin:6px 0}
+.nai-preset-input         {flex:1 1 0;padding:4px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8}
+.nai-btn                  {padding:4px 10px;border:1px solid rgb(34, 37, 63);background: #22253f;color: #f8f8f8;border-radius:4px;cursor:pointer;font-weight:600}
+.nai-btn:hover            {background: #323658ff}
+.nai-preset-list          {display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;}
+.nai-preset-item          {background:#22253f;border:1px solid rgb(34,37,63);padding:2px 6px;border-radius:4px;display:inline-flex;width:fit-content;max-width:100%;white-space:nowrap;gap:4px;align-items:center;cursor:pointer;transition:border-color .3s ease;user-select:none}
+.nai-preset-item input    {margin:0; accent-color: #f5f3c2; cursor: pointer;}
+.nai-preset-item:hover    {border-color: #f5f3c2;}
+.nai-btn-remove           {display:none;border:none;background:none;color:#dd6666;font-size:15px;cursor:pointer;line-height:1}
+.nai-btn-toggle           {width:26px;padding:4px 0;font-weight:700}
+.nai-gear-wrap            {position:absolute; top:6px; right:6px}
+.nai-gear-btn             {width:26px;height:26px;cursor:pointer;border:none;background:none;padding:0;display:flex;align-items:center;justify-content:center;border-radius:2px;color:#f8f8f8}
+.nai-gear-btn.active      {color:#e7f3c2;}
+.nai-popup                {position:absolute;bottom:100%;right:0;margin-bottom:8px;width:200px;padding:10px;background:#13152c;border:2px solid #262946;border-radius:4px;color:#eee;display:none;z-index:2147483647}
+.nai-popup:before         {content:'';position:absolute;bottom:-6px;right:14px;border:6px solid transparent;border-top-color:#262946}
+.nai-remain-row           {margin-top:6px;display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;float:left;user-select:none;}
+.nai-remain-row input[type="checkbox"] {margin: 6px; accent-color: #f5f3c2; cursor: pointer;}
+.nai-remain-row:hover     {cursor: pointer;}
+.nai-has-tooltip          {position: relative;}
+.nai-tooltip              {display:none;position:absolute;left:50%;transform:translateX(-50%);bottom:70%;z-index:100;pointer-events:none;}
+.nai-has-tooltip:hover .nai-tooltip {display:block;}
+.nai-tooltip-content      {width:max-content;max-width:250px;padding:6px 8px;background:#13152c;border:2px solid #262946;border-radius:4px;color:#eee;font-size:12px;white-space:pre-wrap;text-align:left;}
+.nai-tooltip-arrow        {width:0;height:0;margin:0 auto;border:6px solid transparent;border-top-color:#262946;}
+.nai-info-btn .nai-tooltip {left:auto;right:0;transform:none;}
+.nai-info-btn .nai-tooltip-arrow {margin:0 6px 0 auto;}
+.nai-text-red-bold        {color:#dd6666;font-weight:700;}
+.nai-suggest-box          {position:fixed;z-index:2147483647;background:#191b31;border:2px solid #262946;border-radius:4px;max-height:180px;overflow-y:auto;font-size:13px;color:#eee}
+.nai-suggest-item         {padding:4px 8px;cursor:pointer;border:1px solid rgb(34,37,63);border-radius:4px;transition:border-color .3s ease,background-color .3s ease}
+.nai-suggest-item.active  {background-color: #323658ff;border-color: #f5f3c2;transition:background-color .3s ease,border-color .3s ease}
+.nai-popup-header         {display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;}
+.nai-info-btn             {display:inline-flex;align-items:center;justify-content:center;color:#f8f8f8;opacity:0.6;transition:opacity .2s ease;}
+.nai-info-btn:hover       {opacity:1;}
+.nai-preset-search-wrapper {position: relative;flex: 1 1 0;display: flex;align-items: center;}
+.nai-preset-search        {display:flex;gap:6px;align-items:center;margin-top:6px;}
+.nai-preset-search-box    {width:100%;padding:4px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8}
+.nai-preset-search-button {width:26px;cursor:pointer;padding:4px 0;display:flex;align-items:center;justify-content:center;border-radius:4px;color:#f8f8f8;}
+.nai-preset-search-clear  {display: none;position: absolute;right: 4px;top: 0;bottom: 0;margin: auto;height: 20px;width: 20px;border: none;background: transparent;color: #dd6666;font-size: 16px;font-weight: bold;cursor: pointer;line-height: 1;align-items: center;justify-content: center;}
+.nai-preset-search-clear:hover {color: #ff8888;}
+.nai-btn-list-toggle      {width:26px;padding:4px 0;font-weight:700}
+.nai-btn:focus-visible:not([data-mouse-clicked]), .nai-preset-search-button:focus-visible:not([data-mouse-clicked]), .nai-preset-search-clear:focus-visible:not([data-mouse-clicked]), .nai-gear-btn:focus-visible:not([data-mouse-clicked]), .nai-btn-remove:focus-visible:not([data-mouse-clicked]), .nai-preset-panel input[type="checkbox"]:focus-visible:not([data-mouse-clicked]) {outline:2px solid #f5f3c2; outline-offset:1px; border-radius:4px;}
+.nai-preset-notification  {position: absolute;background: #191b31;border: 2px solid #262946; color: #f5f3c2;padding: 5px 10px;border-radius: 4px;font-size: 12px;z-index: 1000;animation: nai-fade-in-out 1.5s ease-out forwards;pointer-events: none;}
+@keyframes Flash          {0%{background: #f5f3c2} 100%{background: #22253f}}
+@keyframes Flash-Err      {0%{background: rgba(221,102,102,0.5)} 100%{background: #22253f}}
+@keyframes nai-fade-in-out {0% { opacity: 0; transform: translateY(10px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); }100% { opacity: 0; transform: translateY(-10px); } }
+.nai-seq-toggle           {display:flex;align-items:center;gap:3px;font-size:12px;font-weight:600;white-space:nowrap;user-select:none;cursor:pointer;}
+.nai-seq-toggle input     {margin:0;accent-color:#f5f3c2;cursor:pointer;}
+.nai-seq-item             {border-left:3px solid #8fb3f5;}
+.nai-seq-pos              {font-size:11px;color:#8fb3f5;font-variant-numeric:tabular-nums;}
+.nai-btn-add              {min-width:72px;}
+.nai-btn-add.nai-btn-update {color:#8fb3f5;border-color:#8fb3f5;}
+.nai-seq-picker           {display:none;align-items:center;gap:6px;margin:0 0 6px;font-size:12px;font-weight:600;}
+.nai-seq-picker-select    {flex:1 1 0;min-width:0;padding:3px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8;cursor:pointer;}
+.nai-preset-title         {cursor:pointer;user-select:none;margin-right:30px;}
+.nai-fold-chevron         {display:inline-block;width:14px;color:#f5f3c2;}
+.nai-collapsed .nai-preset-title {margin-bottom:5px;}
+`;
   const PREFIX = "naiPromptPreset:";
   const TOKEN_REMAIN_TRG = "naiRemainTokenTrigger";
   const DEBUG_MODE_TRG = "debugModeTrigger";
+  const SEQ_PREFIX = "naiPromptSequence:";
+  const PANEL_COLLAPSED_KEY = "naiPanelCollapsed";
+  const SEQ_EXPORT_KEY = "__sequences__";
   function debugLog(...args) {
     if (GM_getValue(DEBUG_MODE_TRG, false)) {
       console.log(...args);
@@ -94,11 +109,18 @@
   class JsonManager {
     TARGET_PATH;
     _dictCache;
+    _seqCache;
+    _seqIndex;
+    _seqListeners;
     _patchInstalled;
     constructor() {
       this.TARGET_PATH = "/ai/generate-image";
       this._dictCache = this.buildDict();
+      this._seqCache = this.buildSequenceDict();
+      this._seqIndex = {};
+      this._seqListeners = new Set();
       this.installPatch();
+      this.listenSequenceAdvance();
     }
 buildDict() {
       const dict = {};
@@ -106,24 +128,50 @@ buildDict() {
       debugLog("[NovelAI Prompt Preset Manager] Preset dict built.");
       return dict;
     }
+buildSequenceDict() {
+      const dict = {};
+      GM_listValues().filter((k) => k.startsWith(SEQ_PREFIX)).forEach((k) => dict[k.slice(SEQ_PREFIX.length)] = GM_getValue(k, ""));
+      return dict;
+    }
+listenSequenceAdvance() {
+      unsafeWindow.addEventListener("naiSequenceAdvance", (e) => {
+        try {
+          const advanced = JSON.parse(e.detail);
+          Object.assign(this._seqIndex, advanced);
+          debugLog("[PresetMgr] Sequence positions advanced:", advanced);
+          this._seqListeners.forEach((cb) => cb());
+        } catch (err) {
+          console.error("[PresetMgr] Failed to read sequence positions:", err);
+        }
+      });
+    }
 installPatch() {
       if (this._patchInstalled) return;
       this._patchInstalled = true;
       const TARGET = this.TARGET_PATH;
       const naiRemainValue = GM_getValue(TOKEN_REMAIN_TRG, false);
       const debugModeValue = GM_getValue(DEBUG_MODE_TRG, false);
-      const initialDict = JSON.stringify(this._dictCache).replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+      const escapeForTemplate = (json) => json.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+      const initialDict = escapeForTemplate(JSON.stringify(this._dictCache));
+      const initialSeqDict = escapeForTemplate(JSON.stringify(this._seqCache));
+      const initialSeqIndex = escapeForTemplate(JSON.stringify(this._seqIndex));
       const patchCode = `
             (function(){
             window.__naiPresetDict = JSON.parse(\`${initialDict}\`);
             window.__naiRemain = ${naiRemainValue};
             window.__naiDebugMode = ${debugModeValue};
+            window.__naiSequenceDict = JSON.parse(\`${initialSeqDict}\`);
+            window.__naiSequenceIndex = JSON.parse(\`${initialSeqIndex}\`);
             const debugLog = (...args) => { if (window.__naiDebugMode) console.log(...args); };
             const errorLog = (...args) => console.error(...args);
 
             window.addEventListener('naiRemainUpdate', e => { window.__naiRemain = e.detail; });
             window.addEventListener('naiPresetUpdate', e => { window.__naiPresetDict = e.detail; });
             window.addEventListener('naiDebugUpdate', e => {window.__naiDebugMode = e.detail; });
+            window.addEventListener('naiSequenceUpdate', e => {
+                window.__naiSequenceDict = e.detail.dict;
+                window.__naiSequenceIndex = e.detail.index;
+            });
 
             const tokenRe = /__([A-Za-z0-9_.-]+?)__/g;
             const replace = s => {
@@ -143,10 +191,43 @@ installPatch() {
                     return match;
                 });
             };
-            const deep    = o => (typeof o==='string') ? replace(o)
-                                : Array.isArray(o)      ? o.map(deep)
+            /*
+             * シーケンス: %%NAME%% を現在位置のエントリに置換する。
+             * 1リクエスト内の同名シーケンスは全て同じエントリになるよう picks に記録し、
+             * レスポンス成功後に advanceSequences で次の位置へ進める。
+             */
+            const seqRe = /%%([A-Za-z0-9_.-]+?)%%/g;
+            const replaceSeq = (s, picks) => {
+                return s.replace(seqRe, (match, seqName) => {
+                    if (!Object.prototype.hasOwnProperty.call(picks, seqName)) {
+                        const raw = window.__naiSequenceDict[seqName];
+                        if (typeof raw !== 'string') return match;
+                        const entries = raw.split(new RegExp('\\\\r?\\\\n')).map(l => l.trim()).filter(Boolean);
+                        if (!entries.length) return match;
+                        const idx = (window.__naiSequenceIndex[seqName] || 0) % entries.length;
+                        picks[seqName] = { value: entries[idx], next: (idx + 1) % entries.length };
+                        debugLog('[PresetMgr] Sequence ' + seqName + ' -> [' + (idx + 1) + '/' + entries.length + '] ' + entries[idx]);
+                    }
+                    return picks[seqName].value;
+                });
+            };
+            const advanceSequences = picks => {
+                const names = Object.keys(picks);
+                if (!names.length) return;
+                const advanced = {};
+                names.forEach(n => {
+                    window.__naiSequenceIndex[n] = picks[n].next;
+                    advanced[n] = picks[n].next;
+                });
+                window.dispatchEvent(new CustomEvent('naiSequenceAdvance', { detail: JSON.stringify(advanced) }));
+            };
+            // シーケンス → プリセット → シーケンス の順で置換し、
+            // シーケンスのエントリ内のプリセット・プリセット内のシーケンスの両方に対応する
+            const expand = (s, picks) => replaceSeq(replace(replaceSeq(s, picks)), picks);
+            const deep    = (o, picks) => (typeof o==='string') ? expand(o, picks)
+                                : Array.isArray(o)      ? o.map(v => deep(v, picks))
                                 : o && typeof o==='object'
-                                ? Object.fromEntries(Object.entries(o).map(([k,v])=>[k,deep(v)]))
+                                ? Object.fromEntries(Object.entries(o).map(([k,v])=>[k,deep(v, picks)]))
                                 : o;
 
             const origFetch = window.fetch;
@@ -191,7 +272,8 @@ installPatch() {
                         } catch(e) { console.error('[PresetMgr] Error parsing prompt data:', e); }
                     }
 
-                    const modifiedBody = JSON.stringify(deep(JSON.parse(bodyText)));
+                    const seqPicks = {};
+                    const modifiedBody = JSON.stringify(deep(JSON.parse(bodyText), seqPicks));
 
                     if( modifiedBody === bodyText ) {
                         debugLog('[PresetMgr] No changes in body, skipping patching.'); 
@@ -224,6 +306,8 @@ installPatch() {
                     }
 
                     const res = await origFetch.call(this, finalInput, finalInit);
+                    // 生成に失敗した場合は同じエントリで再試行できるよう位置を進めない
+                    if (res.ok) advanceSequences(seqPicks);
 
                     if (window.__naiRemain && res.ok && res.headers.get('Content-Type')?.includes('binary/octet-stream')) {
                         debugLog('[PresetMgr] binary/octet-stream response. Trying to process as ZIP.');
@@ -538,6 +622,37 @@ installPatch() {
     getDict() {
       return this._dictCache;
     }
+updateSequences() {
+      this._seqCache = this.buildSequenceDict();
+      Object.keys(this._seqIndex).forEach((name) => {
+        if (!(name in this._seqCache)) delete this._seqIndex[name];
+      });
+      unsafeWindow.dispatchEvent(
+        new CustomEvent("naiSequenceUpdate", { detail: { dict: this._seqCache, index: this._seqIndex } })
+      );
+      this._seqListeners.forEach((cb) => cb());
+    }
+setSequencePosition(name, index) {
+      this._seqIndex[name] = index;
+      this.updateSequences();
+    }
+    getSequenceDict() {
+      return this._seqCache;
+    }
+    getSequenceEntries(name) {
+      const raw = this._seqCache[name];
+      if (typeof raw !== "string") return [];
+      return raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    }
+getSequencePosition(name) {
+      const total = this.getSequenceEntries(name).length;
+      const index = total ? (this._seqIndex[name] || 0) % total : 0;
+      return { index, total };
+    }
+    onSequenceChange(cb) {
+      this._seqListeners.add(cb);
+      return () => this._seqListeners.delete(cb);
+    }
   }
   const jsonManagerSingleton = new JsonManager();
   class SuggestionManager {
@@ -604,6 +719,15 @@ installPatch() {
     update() {
       const txt = this.textBeforeCaret();
       const dict = this.jsonMgr.getDict();
+      const mSeq = txt.match(/%%([A-Za-z0-9_.-]*)$/);
+      if (mSeq && (txt.match(/%%/g) || []).length % 2 === 1) {
+        const prefix = mSeq[1].toLowerCase();
+        let names = Object.keys(this.jsonMgr.getSequenceDict());
+        names = prefix ? names.filter((k) => k.toLowerCase().startsWith(prefix)) : names;
+        names.sort();
+        names = names.slice(0, 100);
+        if (names.length) return this.render(names.map((k) => ({ type: "sequence", text: `%%${k}%%` })));
+      }
       const mVal = txt.match(/__([A-Za-z0-9_.-]+)__(\w*)$/);
       if (mVal && dict[mVal[1]]) {
         const [, key, part] = mVal;
@@ -696,6 +820,10 @@ installPatch() {
         } else {
           textToInsert = suggestionText + ", ";
         }
+      } else if (itemType === "sequence") {
+        const currentTriggerMatch = fullTextBeforeCaret.match(/%%([A-Za-z0-9_.-]*)$/);
+        charactersToDelete = currentTriggerMatch ? currentTriggerMatch[0].length : 0;
+        textToInsert = suggestionText + ", ";
       } else if (itemType === "token") {
         const tokenTriggerRegex = /__([A-Za-z0-9_.-]*)$/;
         const fullTokenTriggerRegex = /__([A-Za-z0-9_.-]+)__$/;
@@ -867,7 +995,10 @@ installPatch() {
       tooltipRemainToken: "Sets whether to leave the preset token in the metadata. Supports [redBold]PNG only[/redBold].",
       tooltipAboutThisScript: "About this script",
       popupPresetAdded: "Preset added.⇒ ",
-      popupPresetUpdated: "Preset updated.⇒ "
+      popupPresetUpdated: "Preset updated.⇒ ",
+      tooltipSequence: "Save as a [redBold]sequence[/redBold]: one entry per line.\nUse it in a prompt as %%name%%. Each generation uses the next entry, then starts over from the first.",
+      popupSequenceAdded: "Sequence added.⇒ ",
+      popupSequenceUpdated: "Sequence updated.⇒ "
     },
     "ja": {
       presetNameError: "プリセット名に使用できない文字が含まれています。",
@@ -876,7 +1007,10 @@ installPatch() {
       tooltipRemainToken: "メタデータにプリセットトークンを残すかどうかを設定します。\n[redBold]PNGのみ[/redBold]に対応しています。",
       tooltipAboutThisScript: "このスクリプトについて",
       popupPresetAdded: "プリセットが追加されました。⇒ ",
-      popupPresetUpdated: "プリセットが更新されました。⇒ "
+      popupPresetUpdated: "プリセットが更新されました。⇒ ",
+      tooltipSequence: "[redBold]シーケンス[/redBold]として保存します（1行に1エントリ）。\nプロンプトでは %%name%% と記述します。生成するたびに次のエントリが使われ、最後まで行くと最初に戻ります。",
+      popupSequenceAdded: "シーケンスが追加されました。⇒ ",
+      popupSequenceUpdated: "シーケンスが更新されました。⇒ "
     },
     "zh": {
       presetNameError: "预设名称包含无效字符。",
@@ -885,7 +1019,10 @@ installPatch() {
       tooltipRemainToken: "设置是否在元数据中保留预设令牌。\n支持 [redBold]PNG[/redBold]。",
       tooltipAboutThisScript: "关于此脚本",
       popupPresetAdded: "预设已添加。⇒ ",
-      popupPresetUpdated: "预设已更新。⇒ "
+      popupPresetUpdated: "预设已更新。⇒ ",
+      tooltipSequence: "保存为[redBold]序列[/redBold]：每行一个条目。\n在提示词中写作 %%name%%。每次生成使用下一个条目，到末尾后从头开始。",
+      popupSequenceAdded: "序列已添加。⇒ ",
+      popupSequenceUpdated: "序列已更新。⇒ "
     },
     "es": {
       presetNameError: "El nombre del presest contiene caracteres inválidos.",
@@ -894,7 +1031,10 @@ installPatch() {
       tooltipRemainToken: "Se establece si se deja el token del presest en el metadato.\nSoporta [redBold]PNG[/redBold].",
       tooltipAboutThisScript: "Acerca de este script",
       popupPresetAdded: "Presest agregado.⇒ ",
-      popupPresetUpdated: "Presest actualizado.⇒ "
+      popupPresetUpdated: "Presest actualizado.⇒ ",
+      tooltipSequence: "Guardar como [redBold]secuencia[/redBold]: una entrada por línea.\nÚsala en el prompt como %%name%%. Cada generación usa la siguiente entrada y al llegar al final vuelve a la primera.",
+      popupSequenceAdded: "Secuencia agregada.⇒ ",
+      popupSequenceUpdated: "Secuencia actualizada.⇒ "
     },
     "id": {
       presetNameError: "Nama presest berisi karakter yang tidak valid.",
@@ -903,7 +1043,10 @@ installPatch() {
       tooltipRemainToken: "Menetapkan apakah token presest di simpan di metadata.\nMendukung [redBold]PNG[/redBold].",
       tooltipAboutThisScript: "Tentang skrip ini",
       popupPresetAdded: "Presest ditambahkan.⇒ ",
-      popupPresetUpdated: "Presest diperbarui.⇒ "
+      popupPresetUpdated: "Presest diperbarui.⇒ ",
+      tooltipSequence: "Simpan sebagai [redBold]urutan[/redBold]: satu entri per baris.\nGunakan di prompt sebagai %%name%%. Setiap generasi memakai entri berikutnya, lalu kembali ke awal setelah entri terakhir.",
+      popupSequenceAdded: "Urutan ditambahkan.⇒ ",
+      popupSequenceUpdated: "Urutan diperbarui.⇒ "
     },
     "pt": {
       presetNameError: "O nome do presest contém caracteres inválidos.",
@@ -912,7 +1055,10 @@ installPatch() {
       tooltipRemainToken: "Define se o token do presest é salvo no metadado.\nSuporta [redBold]PNG[/redBold].",
       tooltipAboutThisScript: "Sobre este script",
       popupPresetAdded: "Presest adicionado.⇒ ",
-      popupPresetUpdated: "Presest atualizado.⇒ "
+      popupPresetUpdated: "Presest atualizado.⇒ ",
+      tooltipSequence: "Salvar como [redBold]sequência[/redBold]: uma entrada por linha.\nUse no prompt como %%name%%. Cada geração usa a próxima entrada e, ao chegar ao fim, volta à primeira.",
+      popupSequenceAdded: "Sequência adicionada.⇒ ",
+      popupSequenceUpdated: "Sequência atualizada.⇒ "
     }
   };
   function renderStyledText(text) {
@@ -947,10 +1093,12 @@ installPatch() {
     panel;
     jsonMgr;
     _onDocClick;
+    _offSeqChange;
     constructor(root) {
       this.langCode = this.getLangCode();
-      this.panel = this.injectUI(root);
       this.jsonMgr = jsonManagerSingleton;
+      this.panel = this.injectUI(root);
+      this._offSeqChange = this.jsonMgr.onSequenceChange(() => this.updateSequenceBadges());
     }
     getLangCode() {
       if (window.__userLang) {
@@ -978,6 +1126,8 @@ installPatch() {
         document.removeEventListener("click", this._onDocClick, false);
         this._onDocClick = void 0;
       }
+      this._offSeqChange?.();
+      this._offSeqChange = void 0;
       if (this.panel.isConnected) this.panel.remove();
       this.panel = null;
     }
@@ -986,7 +1136,9 @@ installPatch() {
       panel.className = "nai-preset-panel";
       panel.style.position = "relative";
       panel.innerHTML = `
-            <div class="nai-preset-title">Prompt Preset / Wildcards Manager</div>
+            <div class="nai-preset-title" role="button" tabindex="0" aria-expanded="true">
+                <span class="nai-fold-chevron">▾</span>Prompt Preset / Wildcards Manager
+            </div>
             <div class="nai-gear-wrap">
                 <button class="nai-gear-btn" title="Settings">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -1020,6 +1172,7 @@ installPatch() {
                 <input type="file" accept=".json,.txt" class="nai-file-input" style="display:none">
             </div>
 
+            <div class="nai-preset-body">
             <div class="nai-textarea-wrapper">
                 <textarea class="nai-preset-textarea" placeholder="masterpiece, best quality, oil painting (medium)" spellcheck="false"></textarea>
                 <div class="nai-textarea-overlay"></div>
@@ -1029,9 +1182,19 @@ installPatch() {
 
             <div class="nai-preset-controls">
                 <input  class="nai-preset-input" placeholder="Preset name">
+                <label class="nai-seq-toggle nai-has-tooltip">
+                    <input type="checkbox" class="nai-seq-check">
+                    <span>SEQ</span>
+                    <div class="nai-tooltip"><div class="nai-tooltip-content" data-tooltip-key="tooltipSequence"></div><div class="nai-tooltip-arrow"></div></div>
+                </label>
                 <button class="nai-btn nai-btn-add">ADD</button>
                 <button class="nai-btn nai-btn-clear">CLEAR</button>
                 <button class="nai-btn nai-btn-toggle">▴</button>
+            </div>
+
+            <div class="nai-seq-picker">
+                <span>Next entry</span>
+                <select class="nai-seq-picker-select"></select>
             </div>
 
             <div class="nai-preset-list"></div>
@@ -1049,6 +1212,7 @@ installPatch() {
                 </button>
                 <button class="nai-btn nai-btn-list-toggle">▴</button>
             </div>
+            </div>
         `;
       panel.querySelectorAll(".nai-tooltip-content[data-tooltip-key]").forEach((el) => {
         const key = el.dataset.tooltipKey;
@@ -1059,6 +1223,44 @@ installPatch() {
       const overlay = panel.querySelector(".nai-textarea-overlay");
       const presetInput = panel.querySelector(".nai-preset-input");
       const errorMsgDiv = panel.querySelector(".nai-preset-errormsg");
+      const seqCheck = panel.querySelector(".nai-seq-check");
+      const addBtn = panel.querySelector(".nai-btn-add");
+      const title = panel.querySelector(".nai-preset-title");
+      const body = panel.querySelector(".nai-preset-body");
+      const setCollapsed = (collapsed) => {
+        body.style.display = collapsed ? "none" : "";
+        panel.classList.toggle("nai-collapsed", collapsed);
+        title.setAttribute("aria-expanded", String(!collapsed));
+        title.querySelector(".nai-fold-chevron").textContent = collapsed ? "▸" : "▾";
+      };
+      const toggleCollapsed = () => {
+        const collapsed = body.style.display !== "none";
+        GM_setValue(PANEL_COLLAPSED_KEY, collapsed);
+        setCollapsed(collapsed);
+      };
+      setCollapsed(GM_getValue(PANEL_COLLAPSED_KEY, false));
+      title.addEventListener("click", toggleCollapsed);
+      title.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleCollapsed();
+        }
+      });
+      const syncAddLabel = () => {
+        const name = presetInput.value.trim();
+        const prefix = seqCheck.checked ? SEQ_PREFIX : PREFIX;
+        const exists = !!name && GM_getValue(prefix + name, null) !== null;
+        addBtn.textContent = exists ? "UPDATE" : "ADD";
+        addBtn.classList.toggle("nai-btn-update", exists);
+      };
+      presetInput.addEventListener("input", syncAddLabel);
+      seqCheck.addEventListener("change", syncAddLabel);
+      const presetPlaceholder = textarea.placeholder;
+      const sequencePlaceholder = "red hair\nblue hair\nblonde hair";
+      const syncSeqMode = () => {
+        textarea.placeholder = seqCheck.checked ? sequencePlaceholder : presetPlaceholder;
+      };
+      seqCheck.addEventListener("change", syncSeqMode);
       const updateOverlay = () => {
         const text = textarea.value;
         overlay.innerHTML = "";
@@ -1094,12 +1296,7 @@ installPatch() {
       textarea.addEventListener("scroll", syncScroll);
       updateOverlay();
       const list = panel.querySelector(".nai-preset-list");
-      GM_listValues().filter((k) => k.startsWith(PREFIX)).forEach(
-        (k) => {
-          const presetName = k.slice(PREFIX.length);
-          list.appendChild(this.makeListItem(presetName));
-        }
-      );
+      this.populateList(list);
       const scrollItemIntoView = (item) => {
         if (!item) return;
         if (list.scrollHeight > list.clientHeight) {
@@ -1131,7 +1328,11 @@ installPatch() {
           errorMsgDiv.style.display = "none";
         }
       });
-      const addBtn = panel.querySelector(".nai-btn-add");
+      const deselectAll = () => {
+        document.querySelectorAll('.nai-preset-item input[type="checkbox"]').forEach((el) => el.checked = false);
+        document.querySelectorAll(".nai-btn-remove").forEach((el) => el.style.display = "none");
+        this.updatePositionPicker();
+      };
       addBtn.onclick = () => {
         const btnFlashErr = () => {
           addBtn.style.animation = "Flash-Err 0.4s";
@@ -1158,11 +1359,13 @@ installPatch() {
           btnFlashErr();
           return;
         }
-        const key = PREFIX + name;
+        const kind = seqCheck.checked ? "sequence" : "preset";
+        const key = (kind === "sequence" ? SEQ_PREFIX : PREFIX) + name;
         const alreadyExists = GM_getValue(key, null) !== null;
         GM_setValue(key, presetText);
+        const messages = uiMessageTranslations[this.langCode];
         if (alreadyExists) {
-          const item = [...list.children].find((el) => el.querySelector("span")?.textContent === name);
+          const item = [...list.children].find((el) => el.dataset.name === name && el.dataset.kind === kind);
           if (item) {
             addBtn.style.animation = "Flash 0.4s";
             setTimeout(() => addBtn.style.animation = "", 400);
@@ -1170,27 +1373,37 @@ installPatch() {
             item.style.animation = "Flash 0.4s";
             setTimeout(() => item.style.animation = "", 400);
           }
-          this.showNotification(uiMessageTranslations[this.langCode].popupPresetUpdated + name);
+          this.showNotification((kind === "sequence" ? messages.popupSequenceUpdated : messages.popupPresetUpdated) + name);
         } else {
-          const newItem = this.makeListItem(name);
+          const newItem = this.makeListItem(name, kind);
           list.appendChild(newItem);
           addBtn.style.animation = "Flash 0.4s";
           setTimeout(() => addBtn.style.animation = "", 400);
           newItem.style.animation = "Flash 0.4s";
           scrollItemIntoView(newItem);
           setTimeout(() => newItem.style.animation = "", 400);
-          this.showNotification(uiMessageTranslations[this.langCode].popupPresetAdded + name);
+          this.showNotification((kind === "sequence" ? messages.popupSequenceAdded : messages.popupPresetAdded) + name);
         }
-        this.jsonMgr.updateDict();
+        if (kind === "sequence") this.jsonMgr.updateSequences();
+        else this.jsonMgr.updateDict();
         presetInput.value = "";
+        textarea.value = "";
+        autoResizeTextarea(textarea);
+        updateOverlay();
+        deselectAll();
+        syncAddLabel();
       };
       panel.querySelector(".nai-btn-clear").onclick = () => {
         textarea.value = "";
         presetInput.value = "";
+        seqCheck.checked = false;
+        syncSeqMode();
         autoResizeTextarea(textarea);
         updateOverlay();
         errorMsgDiv.textContent = "";
         errorMsgDiv.style.display = "none";
+        deselectAll();
+        syncAddLabel();
       };
       panel.querySelector(".nai-btn-toggle").onclick = (e) => {
         const wrapper = panel.querySelector(".nai-textarea-wrapper");
@@ -1205,12 +1418,15 @@ installPatch() {
           const btn = item.querySelector(".nai-btn-remove");
           btn.style.display = target.checked ? "inline" : "none";
           if (target.checked) {
-            const name = item.querySelector("span").textContent;
-            const presetText = GM_getValue(PREFIX + name, "");
+            const name = item.dataset.name;
+            const isSequence = item.dataset.kind === "sequence";
+            const presetText = GM_getValue((isSequence ? SEQ_PREFIX : PREFIX) + name, "");
             textarea.value = presetText;
             autoResizeTextarea(textarea);
             updateOverlay();
             presetInput.value = name;
+            seqCheck.checked = isSequence;
+            syncSeqMode();
             const allCheckboxes = document.querySelectorAll('.nai-preset-item input[type="checkbox"]');
             const allBtns = document.querySelectorAll(".nai-btn-remove");
             allCheckboxes.forEach((el) => {
@@ -1223,8 +1439,15 @@ installPatch() {
                 el.style.display = "none";
               }
             });
+            syncAddLabel();
           }
+          this.updatePositionPicker();
         }
+      });
+      const picker = panel.querySelector(".nai-seq-picker-select");
+      picker.addEventListener("change", () => {
+        const name = picker.dataset.name;
+        if (name) this.jsonMgr.setSequencePosition(name, Number(picker.value));
       });
       list.addEventListener("click", (e) => {
         const target = e.target;
@@ -1232,11 +1455,19 @@ installPatch() {
         e.stopPropagation();
         e.preventDefault();
         const item = target.closest(".nai-preset-item");
-        const name = item.querySelector("span").textContent;
+        const name = item.dataset.name;
         if (!confirm(messageTranslations[this.langCode].confirmDeletePreset + name)) return;
-        GM_deleteValue(PREFIX + name);
-        item.remove();
-        this.jsonMgr.updateDict();
+        if (item.dataset.kind === "sequence") {
+          GM_deleteValue(SEQ_PREFIX + name);
+          item.remove();
+          this.jsonMgr.updateSequences();
+        } else {
+          GM_deleteValue(PREFIX + name);
+          item.remove();
+          this.jsonMgr.updateDict();
+        }
+        this.updatePositionPicker();
+        syncAddLabel();
       });
       const searchBox = panel.querySelector(".nai-preset-search-box");
       const searchBtn = panel.querySelector(".nai-preset-search-button");
@@ -1245,7 +1476,7 @@ installPatch() {
         const searchTerm = searchBox.value.toLowerCase().trim();
         const presetItems = list.querySelectorAll(".nai-preset-item");
         presetItems.forEach((item) => {
-          const presetName = item.querySelector("span").textContent.toLowerCase();
+          const presetName = (item.dataset.name ?? "").toLowerCase();
           if (presetName.includes(searchTerm)) {
             item.style.display = "inline-flex";
           } else {
@@ -1290,6 +1521,7 @@ installPatch() {
         if (!fileInput.files || !fileInput.files[0]) return;
         const reader = new FileReader();
         let importCount = 0;
+        let importedSequences = false;
         reader.onload = () => {
           try {
             importCount = 0;
@@ -1303,6 +1535,19 @@ installPatch() {
                 importCount++;
               }
             });
+            const sequences = obj[SEQ_EXPORT_KEY];
+            if (sequences && typeof sequences === "object") {
+              Object.entries(sequences).forEach(([name, content]) => {
+                if (typeof content !== "string") return;
+                const key = SEQ_PREFIX + name;
+                if (GM_getValue(key, null) === null) {
+                  GM_setValue(key, content);
+                  list.appendChild(this.makeListItem(name, "sequence"));
+                  importCount++;
+                  importedSequences = true;
+                }
+              });
+            }
           } catch (err) {
             alert(messageTranslations[this.langCode].importFailure + err.message);
             return;
@@ -1312,6 +1557,7 @@ installPatch() {
 Imported ${importCount} new preset(s)!`);
             alert(messageTranslations[this.langCode].importSuccess.replace("${importCount}", importCount.toString()));
             this.jsonMgr.updateDict();
+            if (importedSequences) this.jsonMgr.updateSequences();
           }
           fileInput.value = "";
         };
@@ -1323,6 +1569,8 @@ Imported ${importCount} new preset(s)!`);
           const presetName = k.slice(PREFIX.length);
           data[presetName] = GM_getValue(k, "");
         });
+        const sequences = this.jsonMgr.getSequenceDict();
+        if (Object.keys(sequences).length) data[SEQ_EXPORT_KEY] = { ...sequences };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1335,10 +1583,11 @@ Imported ${importCount} new preset(s)!`);
       });
       clearBtn.addEventListener("click", () => {
         if (!confirm(messageTranslations[this.langCode].confirmDeleteAllPresets)) return;
-        GM_listValues().filter((k) => k.startsWith(PREFIX)).forEach((k) => GM_deleteValue(k));
+        GM_listValues().filter((k) => k.startsWith(PREFIX) || k.startsWith(SEQ_PREFIX)).forEach((k) => GM_deleteValue(k));
         list.innerHTML = "";
         alert(messageTranslations[this.langCode].allPresetsDeleted);
         this.jsonMgr.updateDict();
+        this.jsonMgr.updateSequences();
       });
       this._onDocClick = (e) => {
         if (!panel.contains(e.target)) {
@@ -1374,27 +1623,75 @@ Imported ${importCount} new preset(s)!`);
       }, true);
       return panel;
     }
-makeListItem(name) {
+makeListItem(name, kind = "preset") {
       const wrapper = document.createElement("label");
       wrapper.className = "nai-preset-item";
-      wrapper.innerHTML = `
-            <input type="checkbox">
-            <span>${name}</span>
-            <button class="nai-btn-remove">×</button>
-            `;
+      wrapper.dataset.name = name;
+      wrapper.dataset.kind = kind;
+      if (kind === "sequence") {
+        wrapper.classList.add("nai-seq-item");
+        wrapper.innerHTML = `
+                <input type="checkbox">
+                <span class="nai-item-name">${name}</span>
+                <span class="nai-seq-pos"></span>
+                <button class="nai-btn-remove">×</button>
+                `;
+        this.updateSequenceBadge(wrapper);
+      } else {
+        wrapper.innerHTML = `
+                <input type="checkbox">
+                <span class="nai-item-name">${name}</span>
+                <button class="nai-btn-remove">×</button>
+                `;
+      }
       return wrapper;
+    }
+populateList(list) {
+      GM_listValues().filter((k) => k.startsWith(PREFIX)).forEach((k) => list.appendChild(this.makeListItem(k.slice(PREFIX.length))));
+      GM_listValues().filter((k) => k.startsWith(SEQ_PREFIX)).forEach((k) => list.appendChild(this.makeListItem(k.slice(SEQ_PREFIX.length), "sequence")));
     }
 refreshListItems() {
       if (!this.panel) return;
       const list = this.panel.querySelector(".nai-preset-list");
       const presetItems = list.querySelectorAll(".nai-preset-item");
       presetItems.forEach((item) => item.remove());
-      GM_listValues().filter((k) => k.startsWith(PREFIX)).forEach(
-        (k) => {
-          const presetName = k.slice(PREFIX.length);
-          list.appendChild(this.makeListItem(presetName));
-        }
-      );
+      this.populateList(list);
+    }
+updateSequenceBadge(item) {
+      const badge = item.querySelector(".nai-seq-pos");
+      if (!badge) return;
+      const name = item.dataset.name;
+      const { index, total } = this.jsonMgr.getSequencePosition(name);
+      badge.textContent = total ? `${index + 1}/${total}` : "0/0";
+      badge.title = total ? "Next: " + this.jsonMgr.getSequenceEntries(name)[index] : "";
+    }
+    updateSequenceBadges() {
+      if (!this.panel) return;
+      this.panel.querySelectorAll(".nai-seq-item").forEach((item) => this.updateSequenceBadge(item));
+      this.updatePositionPicker();
+    }
+updatePositionPicker() {
+      if (!this.panel) return;
+      const row = this.panel.querySelector(".nai-seq-picker");
+      const select = row.querySelector("select");
+      const checked = this.panel.querySelector(".nai-seq-item:has(input:checked)");
+      const name = checked?.dataset.name;
+      const entries = name ? this.jsonMgr.getSequenceEntries(name) : [];
+      if (!name || !entries.length) {
+        row.style.display = "none";
+        delete select.dataset.name;
+        return;
+      }
+      const { index } = this.jsonMgr.getSequencePosition(name);
+      select.dataset.name = name;
+      select.replaceChildren(...entries.map((entry, i) => {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = `${i + 1}. ${entry}`;
+        return opt;
+      }));
+      select.value = String(index);
+      row.style.display = "flex";
     }
 showNotification(message) {
       if (!this.panel) return;

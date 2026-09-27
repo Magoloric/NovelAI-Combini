@@ -22,6 +22,7 @@ A userscript for novelai.net/image that allows you to manage and use prompt pres
 -   **Preset Management**: Create, save, and manage reusable prompt snippets.
 -   **Multi-line Preset Formatting**: Multi-line presets are automatically formatted into a pipe-separated string (e.g., `||option1|option2||`) when used in prompts.
 -   **Live Autocomplete**: Get suggestions for preset names and individual lines from multi-line presets directly in the prompt editor. Supports both token insertion and inline content expansion.
+-   **Tag Sequences**: Save a list of tags as a sequence and call it with `%%name%%`. Each generation uses the next entry in order, wrapping back to the first after the last.
 -   **Import & Export**: Back up and share your preset collection as a `.json` file.
 -   **PNG Metadata Rewriting**: Optionally save the original prompt (with unexpanded tokens) to the generated PNG's metadata.
 -   **Integrated UI**: A management panel is injected directly into the NovelAI image generation page.
@@ -50,7 +51,30 @@ When the prompt is sent to the API, tokens are replaced with their saved content
 -   Single-line preset → replaced with the text as-is (e.g., `masterpiece, best quality, cinematic lighting`).
 -   Multi-line preset → replaced with the pipe-separated format (e.g., `||red hair|blue hair|blonde hair||`). How NovelAI interprets this format depends on NovelAI's own processing.
 
-### 3. Autocomplete
+### 3. Tag Sequences
+
+A sequence steps through its entries one generation at a time instead of expanding to all of them.
+
+1.  Enter one entry per line in the text area, e.g. for a sequence named `pose`:
+    ```
+    standing
+    sitting
+    lying down
+    ```
+2.  Tick **SEQ** next to the preset name field and click **ADD**. Sequences appear in the list with a blue marker and a `next/total` badge (hover it to see the next entry).
+    - When the name matches an existing preset/sequence the button reads **UPDATE**; after saving, the form is cleared.
+3.  Put `%%pose%%` in a prompt. The 1st generation sends `standing`, the 2nd `sitting`, the 3rd `lying down`, the 4th `standing` again, and so on.
+
+Details:
+-   Every `%%pose%%` in the same request (base prompt, character prompts, negative prompt) gets the **same** entry; the sequence advances once per generation.
+-   The position only advances when the generation succeeds, so a failed request can be retried with the same entry.
+-   Select a sequence in the list to show the **Next entry** picker and choose which entry the next generation uses.
+-   Positions start from the first entry on every page load.
+-   Blank lines are ignored and entries are trimmed. Entries may contain preset tokens (e.g. `__QUALITY-TAGS__, smile`), and presets may contain sequence calls.
+-   Type `%%` in a prompt box to get sequence name suggestions.
+-   Sequences are included in Import / Export under the `__sequences__` key.
+
+### 4. Autocomplete
 
 -   **Preset name suggestions**: Type `__` followed by part of a preset name (e.g., `__QUAL`). A suggestion box will appear.
 -   **Line-level suggestions**: For multi-line presets, type `__tokenName__partialValue` (e.g., `__hair_styles__bl`) to get matching lines.
@@ -63,8 +87,9 @@ When the prompt is sent to the API, tokens are replaced with their saved content
 
 > Multi-line content is always inserted in `||line1|line2||` format when using Shift selection.
 
-### 4. Managing Your Presets
+### 5. Managing Your Presets
 
+-   **Fold the panel**: Click the panel title to collapse or expand it. The state is remembered.
 -   **Load / Edit / Delete**: Check the box next to a preset name to load its content into the text area. A red `×` button will appear for deletion.
 -   **Settings (⚙️)**: Click the gear icon to open the settings menu:
     -   **Import / Export** your preset collection.

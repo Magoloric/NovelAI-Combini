@@ -7,7 +7,7 @@ NovelAI の画像生成ページ (`novelai.net/image`) 上で動作する **Tamp
 
 | 項目 | 値 |
 |--|--|
-| バージョン | 1.4.4 |
+| バージョン | 1.5.0 |
 | ライセンス | MIT |
 | ビルドツール | Vite 7 + [vite-plugin-monkey](https://github.com/nicholasxjy/vite-plugin-monkey) |
 | 言語 | TypeScript |
@@ -81,6 +81,19 @@ IIFE 内で以下を実行する:
   - 単一行プリセット → そのまま置換
   - 複数行プリセット → `||line1|line2|line3||` 形式に変換して置換
 - **Remain Token 機能**: 有効時、置換前の元プロンプトを `window.__naiLastPromptData` に保存
+
+#### 2.2.1 タグシーケンス (`%%NAME%%`)
+
+`naiPromptSequence:` プレフィックスで保存された複数行テキストを「シーケンス」として扱い、生成ごとに1エントリずつ順番に置換する。
+
+- **エントリ**: 各行を trim し、空行は除外する
+- **置換順序**: シーケンス → プリセット → シーケンス (`expand`)。エントリ内の `__TOKEN__`、プリセット内の `%%NAME%%` の両方に対応
+- **1リクエスト1エントリ**: `input` と `v4_prompt.caption` など同じプロンプトが複数箇所に含まれるため、リクエストごとの `picks` オブジェクトに選択結果を記録し、同名シーケンスは全て同じエントリに置換する
+- **位置の進行**: レスポンスが `res.ok` の場合のみ `advanceSequences` で `window.__naiSequenceIndex` を進め、`naiSequenceAdvance` イベント (detail は JSON 文字列) でユーザースクリプト側に通知 (UI のバッジ・ピッカー更新用)
+- **位置は永続化しない**: ページ読み込みごとに全シーケンスが先頭から始まる (`JsonManager._seqIndex` はメモリ上のみ)
+- **末尾到達時**: `(idx + 1) % entries.length` で先頭に戻る。エントリ数が減った場合も参照時に `% entries.length` で補正
+
+ユーザースクリプト側 API: `updateSequences()` (辞書・位置をページ側へ再送), `setSequencePosition(name, index)`, `getSequenceDict()`, `getSequenceEntries(name)`, `getSequencePosition(name)`, `onSequenceChange(cb)` (位置変更時のコールバック登録。UIManager がバッジ更新に使用)
 
 #### 2.3 PNG メタデータパッチ (`patchPng`)
 
@@ -171,13 +184,15 @@ const tags: { pattern: RegExp; className: string }[] = [
 
 | 要素 | 機能 |
 |--|--|
-| **タイトルバー** | "Prompt Preset / Wildcards Manager" + ⚙️ 設定ギアボタン |
+| **タイトルバー** | "Prompt Preset / Wildcards Manager" + ⚙️ 設定ギアボタン。タイトルクリック (Enter/Space) でパネル本体 (`.nai-preset-body`) を折りたたみ。状態は `PANEL_COLLAPSED_KEY` に保存 |
 | **テキストエリア** | プリセット内容の編集。改行文字 `\n` を赤いバッジで可視化するオーバーレイ付き |
 | **プリセット名入力** | バリデーション: `[A-Za-z0-9_.-]` のみ、36文字以内、`__` 禁止 |
-| **ADD ボタン** | プリセットの追加/更新。成功時にフラッシュアニメーション + ポップアップ通知 |
+| **SEQ チェックボックス** | オンの場合、ADD でプリセットではなくシーケンスとして保存する |
+| **ADD ボタン** | プリセット/シーケンスの追加/更新。名前が既存 (現在の種類) と一致する場合は `UPDATE` 表示。保存後はテキストエリア・名前・リスト選択をクリア |
+| **Next entry ピッカー** | リストでシーケンスを選択中のみ表示。次の生成で使うエントリを選択 (`setSequencePosition`) |
 | **CLEAR ボタン** | テキストエリアとプリセット名入力をクリア |
 | **▴/▾ トグル** | テキストエリア / プリセットリストの表示/非表示切り替え |
-| **プリセットリスト** | チェックボックス付きのプリセット一覧。選択で内容をテキストエリアにロード、✕ ボタンで削除 |
+| **プリセットリスト** | チェックボックス付きのプリセット一覧。選択で内容をテキストエリアにロード、✕ ボタンで削除。シーケンスは青いマーカー + `次/総数` バッジ付きで表示される。各アイテムは `data-name` / `data-kind` (`preset` / `sequence`) を持つ |
 | **検索ボックス** | プリセットリストのリアルタイムフィルタリング (クリアボタン付き) |
 
 #### 設定ポップアップ (⚙️)
@@ -193,7 +208,9 @@ const tags: { pattern: RegExp; className: string }[] = [
 #### データ永続化
 
 全てのプリセットは Tampermonkey の `GM_setValue` / `GM_getValue` / `GM_deleteValue` で保存される。
-キー形式: `naiPromptPreset:{プリセット名}`
+キー形式: `naiPromptPreset:{プリセット名}`、シーケンスは `naiPromptSequence:{シーケンス名}`、パネル折りたたみ状態は `naiPanelCollapsed`
+
+エクスポート JSON ではシーケンスを `__sequences__` キー配下に格納する (プリセット名に `__` は使えないため衝突しない。旧バージョンは文字列以外の値を無視するのでインポート互換性あり)。
 
 ---
 
@@ -206,6 +223,7 @@ ProseMirror エディタ上で `__` を入力した際にサジェストボッ�
 | トリガー | サジェスト内容 | 例 |
 |--|--|--|
 | `__partial` | プリセット名の候補 (token 型) | `__` → `__QUALITY__`, `__hair__` |
+| `%%partial` | シーケンス名の候補 (sequence 型)。`%%` の出現数が奇数 (トークンが開いている) の場合のみ | `%%` → `%%pose%%` |
 | `__tokenName__partial` | プリセット内の個別行 (value 型) | `__hair__bl` → `blonde hair` |
 
 #### 操作
@@ -264,6 +282,9 @@ ProseMirror エディタ上で `__` を入力した際にサジェストボッ�
 | `PREFIX` | `'naiPromptPreset:'` | GM_storage のプリセットキー接頭辞 |
 | `TOKEN_REMAIN_TRG` | `'naiRemainTokenTrigger'` | Remain Token トグルの保存キー |
 | `DEBUG_MODE_TRG` | `'debugModeTrigger'` | デバッグモードトグルの保存キー |
+| `SEQ_PREFIX` | `'naiPromptSequence:'` | GM_storage のシーケンスキー接頭辞 |
+| `PANEL_COLLAPSED_KEY` | `'naiPanelCollapsed'` | パネル折りたたみ状態の保存キー |
+| `SEQ_EXPORT_KEY` | `'__sequences__'` | エクスポート JSON 内のシーケンス格納キー |
 
 ---
 
@@ -279,6 +300,8 @@ ProseMirror エディタ上で `__` を入力した際にサジェストボッ�
 | `__naiPmObserver` | `ProseMirrorObserver` | Observer シングルトン |
 | `__naiPromptObserver` | `PromptBoxObserver` | Observer シングルトン |
 | `__naiPresetDict` | `Record<string, string>` | ページ側プリセット辞書 |
+| `__naiSequenceDict` | `Record<string, string>` | ページ側シーケンス辞書 |
+| `__naiSequenceIndex` | `Record<string, number>` | ページ側シーケンス位置 (次に使うエントリ) |
 | `__naiRemain` | `boolean` | Remain Token フラグ |
 | `__naiDebugMode` | `boolean` | デバッグモードフラグ |
 | `__naiLastPromptData` | `object` | パッチ用の元プロンプトデータ |
@@ -397,3 +420,5 @@ npm run build
 | `naiPresetUpdate` | Userscript → Page | `Record<string, string>` (プリセット辞書) |
 | `naiRemainUpdate` | Userscript → Page | `boolean` (Remain Token フラグ) |
 | `naiDebugUpdate` | Userscript → Page | `boolean` (デバッグモードフラグ) |
+| `naiSequenceUpdate` | Userscript → Page | `{dict, index}` (シーケンス辞書と位置) |
+| `naiSequenceAdvance` | Page → Userscript | JSON 文字列 `{name: nextIndex}` (生成成功後に進んだ位置) |

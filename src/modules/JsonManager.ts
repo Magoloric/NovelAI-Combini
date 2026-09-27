@@ -4,12 +4,20 @@ import { debugLog } from './debugLog';
 export class JsonManager {
     TARGET_PATH: string;
     _dictCache: Record<string, string>;
+    _seqCache: Record<string, string>;
+    _seqIndex: Record<string, number>;
+    _seqListeners: Set<() => void>;
     _patchInstalled?: boolean;
 
     constructor() {
         this.TARGET_PATH = '/ai/generate-image';
         this._dictCache = this.buildDict();
+        this._seqCache = this.buildSequenceDict();
+        // 位置はページ読み込みごとに先頭から (永続化しない)
+        this._seqIndex = {};
+        this._seqListeners = new Set();
         this.installPatch();
+        this.listenSequenceAdvance();
     }
     /* GM_storage → {TOKEN: "value"} */
     buildDict(): Record<string, string> {
@@ -20,6 +28,25 @@ export class JsonManager {
         debugLog('[NovelAI Prompt Preset Manager] Preset dict built.');
         return dict;
     }
+    /* GM_storage → {SEQUENCE: "line1\nline2"} */
+    buildSequenceDict(): Record<string, string> {
+        const dict: Record<string, string> = {};
+        GM_listValues()
+            .filter(k => k.startsWith(CONST.SEQ_PREFIX))
+            .forEach(k => dict[k.slice(CONST.SEQ_PREFIX.length)] = GM_getValue(k, ''));
+        return dict;
+    }
+    /* ページ側でシーケンスが進んだら位置を反映する (detail は JSON 文字列: {name: nextIndex}) */
+    listenSequenceAdvance(): void {
+        unsafeWindow.addEventListener('naiSequenceAdvance', (e: Event) => {
+            try {
+                const advanced = JSON.parse((e as CustomEvent).detail) as Record<string, number>;
+                Object.assign(this._seqIndex, advanced);
+                debugLog('[PresetMgr] Sequence positions advanced:', advanced);
+                this._seqListeners.forEach(cb => cb());
+            } catch (err) { console.error('[PresetMgr] Failed to read sequence positions:', err); }
+        });
+    }
     /* ページ側へ JS を注入 */
     installPatch(): void {
         if (this._patchInstalled) return;
@@ -28,20 +55,29 @@ export class JsonManager {
         const TARGET = this.TARGET_PATH;
         const naiRemainValue = GM_getValue(CONST.TOKEN_REMAIN_TRG, false);
         const debugModeValue = GM_getValue(CONST.DEBUG_MODE_TRG, false);
-        const initialDict = JSON.stringify(this._dictCache)
-            .replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+        const escapeForTemplate = (json: string) =>
+            json.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+        const initialDict = escapeForTemplate(JSON.stringify(this._dictCache));
+        const initialSeqDict = escapeForTemplate(JSON.stringify(this._seqCache));
+        const initialSeqIndex = escapeForTemplate(JSON.stringify(this._seqIndex));
 
         const patchCode = `
             (function(){
             window.__naiPresetDict = JSON.parse(\`${initialDict}\`);
             window.__naiRemain = ${naiRemainValue};
             window.__naiDebugMode = ${debugModeValue};
+            window.__naiSequenceDict = JSON.parse(\`${initialSeqDict}\`);
+            window.__naiSequenceIndex = JSON.parse(\`${initialSeqIndex}\`);
             const debugLog = (...args) => { if (window.__naiDebugMode) console.log(...args); };
             const errorLog = (...args) => console.error(...args);
 
             window.addEventListener('naiRemainUpdate', e => { window.__naiRemain = e.detail; });
             window.addEventListener('naiPresetUpdate', e => { window.__naiPresetDict = e.detail; });
             window.addEventListener('naiDebugUpdate', e => {window.__naiDebugMode = e.detail; });
+            window.addEventListener('naiSequenceUpdate', e => {
+                window.__naiSequenceDict = e.detail.dict;
+                window.__naiSequenceIndex = e.detail.index;
+            });
 
             const tokenRe = /__([A-Za-z0-9_.-]+?)__/g;
             const replace = s => {
@@ -61,10 +97,43 @@ export class JsonManager {
                     return match;
                 });
             };
-            const deep    = o => (typeof o==='string') ? replace(o)
-                                : Array.isArray(o)      ? o.map(deep)
+            /*
+             * シーケンス: %%NAME%% を現在位置のエントリに置換する。
+             * 1リクエスト内の同名シーケンスは全て同じエントリになるよう picks に記録し、
+             * レスポンス成功後に advanceSequences で次の位置へ進める。
+             */
+            const seqRe = /%%([A-Za-z0-9_.-]+?)%%/g;
+            const replaceSeq = (s, picks) => {
+                return s.replace(seqRe, (match, seqName) => {
+                    if (!Object.prototype.hasOwnProperty.call(picks, seqName)) {
+                        const raw = window.__naiSequenceDict[seqName];
+                        if (typeof raw !== 'string') return match;
+                        const entries = raw.split(new RegExp('\\\\r?\\\\n')).map(l => l.trim()).filter(Boolean);
+                        if (!entries.length) return match;
+                        const idx = (window.__naiSequenceIndex[seqName] || 0) % entries.length;
+                        picks[seqName] = { value: entries[idx], next: (idx + 1) % entries.length };
+                        debugLog('[PresetMgr] Sequence ' + seqName + ' -> [' + (idx + 1) + '/' + entries.length + '] ' + entries[idx]);
+                    }
+                    return picks[seqName].value;
+                });
+            };
+            const advanceSequences = picks => {
+                const names = Object.keys(picks);
+                if (!names.length) return;
+                const advanced = {};
+                names.forEach(n => {
+                    window.__naiSequenceIndex[n] = picks[n].next;
+                    advanced[n] = picks[n].next;
+                });
+                window.dispatchEvent(new CustomEvent('naiSequenceAdvance', { detail: JSON.stringify(advanced) }));
+            };
+            // シーケンス → プリセット → シーケンス の順で置換し、
+            // シーケンスのエントリ内のプリセット・プリセット内のシーケンスの両方に対応する
+            const expand = (s, picks) => replaceSeq(replace(replaceSeq(s, picks)), picks);
+            const deep    = (o, picks) => (typeof o==='string') ? expand(o, picks)
+                                : Array.isArray(o)      ? o.map(v => deep(v, picks))
                                 : o && typeof o==='object'
-                                ? Object.fromEntries(Object.entries(o).map(([k,v])=>[k,deep(v)]))
+                                ? Object.fromEntries(Object.entries(o).map(([k,v])=>[k,deep(v, picks)]))
                                 : o;
 
             const origFetch = window.fetch;
@@ -109,7 +178,8 @@ export class JsonManager {
                         } catch(e) { console.error('[PresetMgr] Error parsing prompt data:', e); }
                     }
 
-                    const modifiedBody = JSON.stringify(deep(JSON.parse(bodyText)));
+                    const seqPicks = {};
+                    const modifiedBody = JSON.stringify(deep(JSON.parse(bodyText), seqPicks));
 
                     if( modifiedBody === bodyText ) {
                         debugLog('[PresetMgr] No changes in body, skipping patching.'); 
@@ -142,6 +212,8 @@ export class JsonManager {
                     }
 
                     const res = await origFetch.call(this, finalInput, finalInit);
+                    // 生成に失敗した場合は同じエントリで再試行できるよう位置を進めない
+                    if (res.ok) advanceSequences(seqPicks);
 
                     if (window.__naiRemain && res.ok && res.headers.get('Content-Type')?.includes('binary/octet-stream')) {
                         debugLog('[PresetMgr] binary/octet-stream response. Trying to process as ZIP.');
@@ -456,6 +528,40 @@ export class JsonManager {
     }
     getDict(): Record<string, string> {
         return this._dictCache;
+    }
+    /* シーケンス辞書・位置をページ側へ再送する (追加/編集/削除/リセット時) */
+    updateSequences(): void {
+        this._seqCache = this.buildSequenceDict();
+        Object.keys(this._seqIndex).forEach(name => {
+            if (!(name in this._seqCache)) delete this._seqIndex[name];
+        });
+        unsafeWindow.dispatchEvent(
+            new CustomEvent('naiSequenceUpdate', { detail: { dict: this._seqCache, index: this._seqIndex } })
+        );
+        this._seqListeners.forEach(cb => cb());
+    }
+    /* 次の生成で使うエントリを指定する (0始まり) */
+    setSequencePosition(name: string, index: number): void {
+        this._seqIndex[name] = index;
+        this.updateSequences();
+    }
+    getSequenceDict(): Record<string, string> {
+        return this._seqCache;
+    }
+    getSequenceEntries(name: string): string[] {
+        const raw = this._seqCache[name];
+        if (typeof raw !== 'string') return [];
+        return raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    }
+    /* 次の生成で使われるエントリ (0始まり) と総数 */
+    getSequencePosition(name: string): { index: number, total: number } {
+        const total = this.getSequenceEntries(name).length;
+        const index = total ? (this._seqIndex[name] || 0) % total : 0;
+        return { index, total };
+    }
+    onSequenceChange(cb: () => void): () => void {
+        this._seqListeners.add(cb);
+        return () => this._seqListeners.delete(cb);
     }
 }
 export const jsonManagerSingleton = new JsonManager();

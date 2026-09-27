@@ -15,6 +15,8 @@ declare global {
     __naiPromptObserver?: PromptBoxObserver;
     
     __naiPresetDict: Record<string, string>;
+    __naiSequenceDict: Record<string, string>;
+    __naiSequenceIndex: Record<string, number>;
     __naiRemain: boolean;
     __naiDebugMode: boolean;
     __naiLastPromptData?: object;

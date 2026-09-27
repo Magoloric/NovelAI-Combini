@@ -50,3 +50,14 @@
 @keyframes Flash          {0%{background: #f5f3c2} 100%{background: #22253f}}
 @keyframes Flash-Err      {0%{background: rgba(221,102,102,0.5)} 100%{background: #22253f}}
 @keyframes nai-fade-in-out {0% { opacity: 0; transform: translateY(10px); } 10% { opacity: 1; transform: translateY(0); } 90% { opacity: 1; transform: translateY(0); }100% { opacity: 0; transform: translateY(-10px); } }
+.nai-seq-toggle           {display:flex;align-items:center;gap:3px;font-size:12px;font-weight:600;white-space:nowrap;user-select:none;cursor:pointer;}
+.nai-seq-toggle input     {margin:0;accent-color:#f5f3c2;cursor:pointer;}
+.nai-seq-item             {border-left:3px solid #8fb3f5;}
+.nai-seq-pos              {font-size:11px;color:#8fb3f5;font-variant-numeric:tabular-nums;}
+.nai-btn-add              {min-width:72px;}
+.nai-btn-add.nai-btn-update {color:#8fb3f5;border-color:#8fb3f5;}
+.nai-seq-picker           {display:none;align-items:center;gap:6px;margin:0 0 6px;font-size:12px;font-weight:600;}
+.nai-seq-picker-select    {flex:1 1 0;min-width:0;padding:3px 6px;border-radius:4px;border:2px solid #262946;background:#0e0f21;color:#f8f8f8;cursor:pointer;}
+.nai-preset-title         {cursor:pointer;user-select:none;margin-right:30px;}
+.nai-fold-chevron         {display:inline-block;width:14px;color:#f5f3c2;}
+.nai-collapsed .nai-preset-title {margin-bottom:5px;}

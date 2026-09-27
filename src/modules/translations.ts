@@ -58,6 +58,9 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: 'About this script',
         popupPresetAdded: 'Preset added.⇒ ',
         popupPresetUpdated: 'Preset updated.⇒ ',
+        tooltipSequence: 'Save as a [redBold]sequence[/redBold]: one entry per line.\nUse it in a prompt as %%name%%. Each generation uses the next entry, then starts over from the first.',
+        popupSequenceAdded: 'Sequence added.⇒ ',
+        popupSequenceUpdated: 'Sequence updated.⇒ ',
     },
     'ja': {
         presetNameError: 'プリセット名に使用できない文字が含まれています。',
@@ -67,6 +70,9 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: 'このスクリプトについて',
         popupPresetAdded: 'プリセットが追加されました。⇒ ',
         popupPresetUpdated: 'プリセットが更新されました。⇒ ',
+        tooltipSequence: '[redBold]シーケンス[/redBold]として保存します（1行に1エントリ）。\nプロンプトでは %%name%% と記述します。生成するたびに次のエントリが使われ、最後まで行くと最初に戻ります。',
+        popupSequenceAdded: 'シーケンスが追加されました。⇒ ',
+        popupSequenceUpdated: 'シーケンスが更新されました。⇒ ',
     },
     'zh': {
         presetNameError: '预设名称包含无效字符。',
@@ -76,6 +82,9 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: '关于此脚本',
         popupPresetAdded: '预设已添加。⇒ ',
         popupPresetUpdated: '预设已更新。⇒ ',
+        tooltipSequence: '保存为[redBold]序列[/redBold]：每行一个条目。\n在提示词中写作 %%name%%。每次生成使用下一个条目，到末尾后从头开始。',
+        popupSequenceAdded: '序列已添加。⇒ ',
+        popupSequenceUpdated: '序列已更新。⇒ ',
     },
     'es': {
         presetNameError: 'El nombre del presest contiene caracteres inválidos.',
@@ -85,6 +94,9 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: 'Acerca de este script',
         popupPresetAdded: 'Presest agregado.⇒ ',
         popupPresetUpdated: 'Presest actualizado.⇒ ',
+        tooltipSequence: 'Guardar como [redBold]secuencia[/redBold]: una entrada por línea.\nÚsala en el prompt como %%name%%. Cada generación usa la siguiente entrada y al llegar al final vuelve a la primera.',
+        popupSequenceAdded: 'Secuencia agregada.⇒ ',
+        popupSequenceUpdated: 'Secuencia actualizada.⇒ ',
     },
     'id': {
         presetNameError: 'Nama presest berisi karakter yang tidak valid.',
@@ -94,6 +106,9 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: 'Tentang skrip ini',
         popupPresetAdded: 'Presest ditambahkan.⇒ ',
         popupPresetUpdated: 'Presest diperbarui.⇒ ',
+        tooltipSequence: 'Simpan sebagai [redBold]urutan[/redBold]: satu entri per baris.\nGunakan di prompt sebagai %%name%%. Setiap generasi memakai entri berikutnya, lalu kembali ke awal setelah entri terakhir.',
+        popupSequenceAdded: 'Urutan ditambahkan.⇒ ',
+        popupSequenceUpdated: 'Urutan diperbarui.⇒ ',
     },
     'pt': {
         presetNameError: 'O nome do presest contém caracteres inválidos.',
@@ -103,5 +118,8 @@ export const uiMessageTranslations = {
         tooltipAboutThisScript: 'Sobre este script',
         popupPresetAdded: 'Presest adicionado.⇒ ',
         popupPresetUpdated: 'Presest atualizado.⇒ ',
+        tooltipSequence: 'Salvar como [redBold]sequência[/redBold]: uma entrada por linha.\nUse no prompt como %%name%%. Cada geração usa a próxima entrada e, ao chegar ao fim, volta à primeira.',
+        popupSequenceAdded: 'Sequência adicionada.⇒ ',
+        popupSequenceUpdated: 'Sequência atualizada.⇒ ',
     }
 }

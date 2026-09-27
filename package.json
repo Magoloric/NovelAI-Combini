@@ -1,6 +1,6 @@
 {
   "name": "novelai-preset-manager",
-  "version": "1.4.6",
+  "version": "1.5.0",
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build"

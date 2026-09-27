@@ -66,6 +66,16 @@ export class SuggestionManager {
         const txt  = this.textBeforeCaret();
         const dict = this.jsonMgr.getDict();
 
+        // %%partial → sequence names (only when the last %% opens a token, not closes one)
+        const mSeq = txt.match(/%%([A-Za-z0-9_.-]*)$/);
+        if (mSeq && (txt.match(/%%/g) || []).length % 2 === 1) {
+            const prefix = mSeq[1].toLowerCase();
+            let names = Object.keys(this.jsonMgr.getSequenceDict());
+            names = prefix ? names.filter(k => k.toLowerCase().startsWith(prefix)) : names;
+            names.sort(); names = names.slice(0, 100);
+            if (names.length) return this.render(names.map(k => ({type:'sequence', text:`%%${k}%%`})));
+        }
+
         const mVal = txt.match(/__([A-Za-z0-9_.-]+)__(\w*)$/);
         if (mVal && dict[mVal[1]]) {
         const [ , key, part ] = mVal;
@@ -163,6 +173,10 @@ export class SuggestionManager {
             } else {
                 textToInsert = suggestionText! + ', ';
             }
+        } else if (itemType === 'sequence') {
+            const currentTriggerMatch = fullTextBeforeCaret.match(/%%([A-Za-z0-9_.-]*)$/);
+            charactersToDelete = currentTriggerMatch ? currentTriggerMatch[0].length : 0;
+            textToInsert = suggestionText! + ', ';
         } else if (itemType === 'token') {
             const tokenTriggerRegex = /__([A-Za-z0-9_.-]*)$/;
             const fullTokenTriggerRegex = /__([A-Za-z0-9_.-]+)__$/;
